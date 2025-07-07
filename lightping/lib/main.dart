@@ -64,11 +64,20 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // Navigate to phone number input screen after short delay
-    Timer(const Duration(seconds: 2), () {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const PhoneNumberScreen()),
-      );
+    // Check if phone number exists before navigating
+    Timer(const Duration(seconds: 2), () async {
+      final prefs = await SharedPreferences.getInstance();
+      final savedNumber = prefs.getString('phone_number') ?? '';
+      
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => savedNumber.isEmpty 
+              ? const PhoneNumberScreen() 
+              : const MainScreen(),
+          ),
+        );
+      }
     });
   }
 
@@ -137,6 +146,7 @@ class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
       appBar: AppBar(
         title: Row(
           children: [
+            // Use the fixed logo_curved.png
             Image.asset('assets/images/logo_curved.png', height: 40),
             const SizedBox(width: 10),
             const Text(
@@ -314,6 +324,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // Initialize notifications
   void _initializeNotifications() {
     _notificationsPlugin = FlutterLocalNotificationsPlugin();
+    // Use the proper icon for notifications
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
     );
@@ -465,6 +476,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           onTap: _showPhoneNumberDialog,
           child: Row(
             children: [
+              // Use the fixed logo_curved.png
               Image.asset('assets/images/logo_curved.png', height: 40),
               const SizedBox(width: 10),
               const Text(

@@ -15,7 +15,7 @@ class LightDetectionService {
   double _previousIntensity = 0.0;
   
   // Detection thresholds (configurable)
-  double _intensityThreshold = 0.25;
+  double _intensityThreshold = 0.15; // More sensitive detection
   
   // Initialization flag
   bool _isInitialized = false;
@@ -100,7 +100,8 @@ class LightDetectionService {
         
         // Calculate intensity based on saturation and value
         // This approach detects bright lights regardless of color
-        final pixelIntensity = value * (1.0 + saturation * 0.5);
+        // Enhanced formula that is more sensitive to subtle light changes
+        final pixelIntensity = value * (1.0 + saturation * 0.7);
         
         totalIntensity += pixelIntensity;
         sampleCount++;
