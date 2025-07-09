@@ -17,7 +17,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Import our services
 import 'services/light_detection_service.dart';
-import 'services/sms_service.dart';
+import 'services/sms_service.dart'; // Now contains WhatsApp service
 
 List<CameraDescription> cameras = [];
 
@@ -99,7 +99,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// Phone Number Input Screen
+// WhatsApp Setup Screen (formerly Phone Number Input Screen)
 class PhoneNumberScreen extends StatefulWidget {
   const PhoneNumberScreen({super.key});
 
@@ -109,12 +109,33 @@ class PhoneNumberScreen extends StatefulWidget {
 
 class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
   final _phoneController = TextEditingController();
+  final _apiKeyController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _showApiKeyField = false;
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedData();
+  }
+
+  Future<void> _loadSavedData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedPhone = prefs.getString('phone_number') ?? '';
+    final savedApiKey = prefs.getString('whatsapp_api_key') ?? '';
+    
+    setState(() {
+      _phoneController.text = savedPhone;
+      _apiKeyController.text = savedApiKey;
+      _showApiKeyField = savedPhone.isNotEmpty;
+    });
+  }
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _apiKeyController.dispose();
     super.dispose();
   }
 
@@ -124,9 +145,10 @@ class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
         _isLoading = true;
       });
 
-      // Save phone number to local storage
+      // Save phone number and API key to local storage
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('phone_number', _phoneController.text);
+      await prefs.setString('whatsapp_api_key', _apiKeyController.text);
 
       if (mounted) {
         setState(() {
@@ -136,6 +158,14 @@ class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
           MaterialPageRoute(builder: (context) => const MainScreen()),
         );
       }
+    }
+  }
+  
+  void _proceedToApiKey() {
+    if (_phoneController.text.isNotEmpty) {
+      setState(() {
+        _showApiKeyField = true;
+      });
     }
   }
 
@@ -164,13 +194,13 @@ class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Welcome to LightPing',
+                'Activate WhatsApp Messaging',
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 10),
-              const Text(
-                'Enter your phone number to receive notifications when a light ping is detected.',
-                style: TextStyle(fontSize: 16, color: Colors.black54),
+              Text(
+                WhatsAppService.getActivationInstructions(),
+                style: const TextStyle(fontSize: 16, color: Colors.black54),
               ),
               const SizedBox(height: 30),
               TextFormField(
@@ -204,12 +234,31 @@ class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
                 'Format: Include country code (e.g., +1 for US)',
                 style: TextStyle(fontSize: 14, color: Colors.grey),
               ),
+              const SizedBox(height: 20),
+              if (_showApiKeyField)
+                TextFormField(
+                  controller: _apiKeyController,
+                  decoration: InputDecoration(
+                    labelText: 'API Key',
+                    hintText: 'Enter your API Key',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    prefixIcon: const Icon(Icons.vpn_key),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter the API key';
+                    }
+                    return null;
+                  },
+                ),
               const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _savePhoneNumber,
+                  onPressed: _isLoading ? null : (_showApiKeyField ? _savePhoneNumber : _proceedToApiKey),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
@@ -219,7 +268,7 @@ class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
                   ),
                   child: _isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Continue', style: TextStyle(fontSize: 16)),
+                      : Text(_showApiKeyField ? 'Activate' : 'Next', style: const TextStyle(fontSize: 16)),
                 ),
               ),
             ],
@@ -245,6 +294,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _pingCount = 0;
   late FlutterLocalNotificationsPlugin _notificationsPlugin;
   String _phoneNumber = '';
+  String _apiKey = '';
   Timer? _pingAnalysisTimer;
   
   // Light detection service
@@ -338,29 +388,53 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _notificationsPlugin.initialize(initSettings);
   }
 
-  // Load saved phone number
+  // Load saved user data
   Future<void> _loadPhoneNumber() async {
     final prefs = await SharedPreferences.getInstance();
     final savedNumber = prefs.getString('phone_number') ?? '';
+    final savedApiKey = prefs.getString('whatsapp_api_key') ?? '';
     setState(() {
       _phoneNumber = savedNumber;
+      _apiKey = savedApiKey;
     });
   }
 
   // Show phone number edit dialog
   void _showPhoneNumberDialog() {
-    final controller = TextEditingController(text: _phoneNumber);
+    final phoneController = TextEditingController(text: _phoneNumber);
+    final apiKeyController = TextEditingController(text: _apiKey);
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Update Phone Number'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Phone Number',
-            hintText: 'Example: +1 (555) 123-4567',
+        title: const Text('Update WhatsApp Settings'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: phoneController,
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number',
+                  hintText: 'Example: +1 (555) 123-4567',
+                ),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: apiKeyController,
+                decoration: const InputDecoration(
+                  labelText: 'API Key',
+                  hintText: 'Your WhatsApp API Key',
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'To get a new API key, send "I allow callmebot to send me messages" to +34 644 87 21 57',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
           ),
-          keyboardType: TextInputType.phone,
         ),
         actions: [
           TextButton(
@@ -369,12 +443,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
           TextButton(
             onPressed: () async {
-              final newNumber = controller.text.trim();
-              if (newNumber.isNotEmpty) {
+              final newNumber = phoneController.text.trim();
+              final newApiKey = apiKeyController.text.trim();
+              
+              if (newNumber.isNotEmpty && newApiKey.isNotEmpty) {
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setString('phone_number', newNumber);
+                await prefs.setString('whatsapp_api_key', newApiKey);
                 setState(() {
                   _phoneNumber = newNumber;
+                  _apiKey = newApiKey;
                 });
               }
               if (mounted) Navigator.pop(context);
@@ -455,16 +533,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       notificationDetails,
     );
     
-    // Send SMS notification using TextBelt
-    final smsResult = await TextBeltSmsService.sendSms(
-      phoneNumber: _phoneNumber,
-      message: 'Light Ping Detected! A change in light intensity has been detected.',
-    );
+    // Send WhatsApp notification using CallMeBot
+    if (_phoneNumber.isNotEmpty && _apiKey.isNotEmpty) {
+      final whatsappResult = await WhatsAppService.sendWhatsAppMessage(
+        phoneNumber: _phoneNumber,
+        apiKey: _apiKey,
+      );
 
-    if (smsResult) {
-      print('SMS sent successfully to $_phoneNumber');
+      if (whatsappResult) {
+        print('WhatsApp message sent successfully to $_phoneNumber');
+      } else {
+        print('Failed to send WhatsApp message to $_phoneNumber');
+      }
     } else {
-      print('Failed to send SMS to $_phoneNumber');
+      print('Cannot send WhatsApp message: phone number or API key is missing');
     }
   }
 
@@ -491,10 +573,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             padding: const EdgeInsets.only(right: 16.0),
             child: Center(
               child: Text(
-                'SMS: ${_phoneNumber.isNotEmpty ? _phoneNumber : "Not Set"}',
+                'WhatsApp: ${_phoneNumber.isNotEmpty ? _phoneNumber : "Not Set"}',
                 style: TextStyle(
                   fontSize: 12,
-                  color: _phoneNumber.isEmpty ? Colors.red : Colors.grey,
+                  color: _phoneNumber.isEmpty || _apiKey.isEmpty ? Colors.red : Colors.grey,
                 ),
               ),
             ),
